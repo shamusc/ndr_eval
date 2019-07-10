@@ -33,7 +33,7 @@ def hypersphere(n_dimensions,n_samples=1000,k_space=20,section=False,offset=0,\
             if section == True:
                 a = random.random()
             else:
-                a = random.uniform(-1,1)
+                a = random.normal(0,1)
             data[i,j]=a
             j += 1
         norm = np.linalg.norm(data[i])

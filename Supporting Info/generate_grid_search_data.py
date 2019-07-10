@@ -5,10 +5,9 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.decomposition import PCA
 import umap
 import random
-import os
-import sys
-from pydiffmap import diffusion_map
+import time
 
+print("hi")
 def neighbors(data, k=20):
     # for a given dataset, finds the k nearest neighbors for each point
     nbrs = NearestNeighbors(n_neighbors=k, algorithm='ball_tree').fit(data)
@@ -35,21 +34,21 @@ def hypersphere(n_dimensions,n_samples=1000,k_space=20,section=False,offset=0,\
             if section == True:
                 a = random.random()
             else:
-                a = random.normal(0,1)
+                a = np.random.normal(0,1)
             data[i,j]=a
             j += 1
         norm = np.linalg.norm(data[i])
         if noise == False:# making each vector into sphere
             data[i] = data[i]/norm
         if noise==True:
-            noise_term = (random.uniform(-1,1) * noise_amplitude)
-            #print(noise_term)
+            noise_term = (np.random.normal(0,1) * noise_amplitude)
+            print(noise_term)
             data[i] = (data[i]/norm) + noise_term
         i += 1
     if comb_noise == True:
         for num in range(0, n_samples):
             for zero_dim in range(n_dimensions, k_space):
-                data[num,zero_dim]= (random.uniform(-1,1) * noise_amplitude)
+                data[num,zero_dim]= (np.random.normal(-1,1) * noise_amplitude)
     j = offset_dimension
     if offset != 0:
         i = 0
@@ -66,14 +65,14 @@ def NDR(data,method,dim,n_neighbors=100):
         embedding = manifold.LocallyLinearEmbedding(n_neighbors=n_neighbors,n_components=dim,\
                 method='standard').fit_transform(data)
     elif method == 'hessian_LLE':
-        embedding = manifold.LocallyLinearEmbedding(n_neighbors=235,n_components=dim,\
-                method='hessian',eigen_solver='dense').fit_transform(data)
+        embedding = manifold.LocallyLinearEmbedding(n_neighbors=n_neighbors,n_components=dim,\
+                method='hessian').fit_transform(data)
     elif method == 'ltsa_LLE':
         embedding = manifold.LocallyLinearEmbedding(n_neighbors=n_neighbors, n_components=dim,\
-                method='ltsa',eigen_solver='dense').fit_transform(data)
+                method='ltsa').fit_transform(data)
     elif method == 'modified_LLE':
         embedding = manifold.LocallyLinearEmbedding(n_neighbors=n_neighbors, n_components=dim,\
-                method='modified',eigen_solver='dense').fit_transform(data)
+                method='modified').fit_transform(data)
     elif method == 'IsoMap':
         embedding = manifold.Isomap(n_neighbors=n_neighbors, n_components=dim)\
             .fit_transform(data)
@@ -89,43 +88,41 @@ def NDR(data,method,dim,n_neighbors=100):
         embedding = umap.UMAP(n_components=dim,n_neighbors=n_neighbors).fit_transform(data)
     elif method == 'PCA':
         embedding = PCA(n_components=dim,svd_solver= 'auto').fit_transform(data)
-    elif method == 'Diffusion_Map':
-        mydmap = diffusion_map.DiffusionMap.from_sklearn(n_evecs=dim)
-        embedding = mydmap.fit_transform(data)
     return(embedding)
 
-methods = ['Diffusion_Map','standard_LLE','ltsa_LLE','modified_LLE','Spectral_Embedding','IsoMap','t-SNE','MDS','UMAP','PCA']
-for method in methods:
-    sphere_sizes = range(10,100,10)
-    n_samples = 1000
-    cluster_size = 20
-    dim_sizes = range(1,100,1)
-    list_array =[dim_sizes]
-    for sphere_size in sphere_sizes:
-        run_array = []
-        data = hypersphere(n_dimensions=sphere_size,n_samples=n_samples,k_space=100)
-        for latent_dim in dim_sizes:
-            print("Data has shape: " + str(data.shape))
-            # file_object = open('/Users/shamuscooley/GradSchool/Research/manifold/data/Siebert Data/wholegenome/enEp_SC1_ManDA_results_'+str(datetime.today())[0:10]+'.csv','w')
+#methods = ['standard_LLE']#'ltsa_LLE','modified_LLE','Spectral_Embedding','IsoMap','t-SNE','MDS','UMAP']
+perplist = [5,25,50, 100, 200,400]
+lrlist = [12.5, 25, 50, 100,200,400]
+num_iter= [500]
+list_array = []
+sample_size = 1000
+cluster_size = int(sample_size/10)
+data = hypersphere(n_dimensions=20,n_samples=sample_size,k_space=100)
+for niter in num_iter:
+    for lr in lrlist:
+        run_array =[niter,lr]
+        for perp in perplist:
+            t0=time.time();
+            n_samples = data.shape[0]
+            print("Combo: "+str((niter,lr,perp)))
             print("Finding High-D Neighborhood...")
             high_D_neighborhood = neighbors(data,k=cluster_size)
             print("Generating Embedding...")
-            embedding = NDR(data=data,method=method,dim=latent_dim)
-            print("Finding Low-D Neighborhood...")
+            embedding = manifold.TSNE(n_components=20, method = 'exact',init = 'pca', random_state=0,perplexity =perp,learning_rate=lr,n_iter=niter).fit_transform(data)
             low_D_neighborhood = neighbors(embedding,k=cluster_size)
             print("Calculating Jaccard Distances...")
             jaccard_distances=[]
-            for i in range(0,n_samples,1):
-                jaccard_distances.append(jaccard(low_D_neighborhood[i,:],high_D_neighborhood[i,:]))
-            trial =np.mean(jaccard_distances)
-            run_array.append(trial)
+            for i in range(0, sample_size):
+                jaccard_distances.append(jaccard(low_D_neighborhood[i,1:],high_D_neighborhood[i,1:]))
+            run_array.append(sum(jaccard_distances)/len(jaccard_distances))
+            t1=time.time();
+            print("Time taken: "+str(t1-t0))
         list_array.append(run_array)
-    print("Making numpy array")
-    nparray = np.asarray(list_array)
-    nparray = np.transpose(nparray)
-    col_labels= ['Latent Dimension']+["Sphere Dimension: "+str(p) for p in sphere_sizes]
-    print("Making DataFrame");
-    frame_of_data= pd.DataFrame(nparray, columns=col_labels)
-    print("Making.csv")
-    frame_of_data.to_csv("data/"+method+".csv")
+print("Making numpy array")
+nparray = np.asarray(list_array)
+print("Making DataFrame");
+col_head =["Num_Iterations", "Learning Rate"]+["Perplexity: "+ str(p) for p in perplist]
+frame_of_data= pd.DataFrame(nparray, columns = col_head)
+print("Making.csv")
+frame_of_data.to_csv("/home/shamuscooley/Research/manifold_learning/figures/supplement/normal_dist/data/grid_search.csv")
 print("All Done")

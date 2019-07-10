@@ -7,7 +7,8 @@ import umap
 import random
 import os
 import sys
-from pydiffmap import diffusion_map
+#from pydiffmap import diffusion_map
+from scipy.stats import truncnorm
 
 def neighbors(data, k=20):
     # for a given dataset, finds the k nearest neighbors for each point
@@ -35,21 +36,21 @@ def hypersphere(n_dimensions,n_samples=1000,k_space=20,section=False,offset=0,\
             if section == True:
                 a = random.random()
             else:
-                a = random.normal(0,1)
+                a = np.random.normal(0,1)#random.uniform(-1,1)
             data[i,j]=a
             j += 1
         norm = np.linalg.norm(data[i])
         if noise == False:# making each vector into sphere
             data[i] = data[i]/norm
         if noise==True:
-            noise_term = (random.uniform(-1,1) * noise_amplitude)
+            noise_term = (np.random.normal(0,1) * noise_amplitude)
             #print(noise_term)
             data[i] = (data[i]/norm) + noise_term
         i += 1
     if comb_noise == True:
         for num in range(0, n_samples):
             for zero_dim in range(n_dimensions, k_space):
-                data[num,zero_dim]= (random.uniform(-1,1) * noise_amplitude)
+                data[num,zero_dim]= (np.random.normal(0,1) * noise_amplitude)
     j = offset_dimension
     if offset != 0:
         i = 0
@@ -94,38 +95,39 @@ def NDR(data,method,dim,n_neighbors=100):
         embedding = mydmap.fit_transform(data)
     return(embedding)
 
-methods = ['Diffusion_Map','standard_LLE','ltsa_LLE','modified_LLE','Spectral_Embedding','IsoMap','t-SNE','MDS','UMAP','PCA']
-for method in methods:
-    sphere_sizes = range(10,100,10)
-    n_samples = 1000
-    cluster_size = 20
-    dim_sizes = range(1,100,1)
-    list_array =[dim_sizes]
-    for sphere_size in sphere_sizes:
-        run_array = []
-        data = hypersphere(n_dimensions=sphere_size,n_samples=n_samples,k_space=100)
-        for latent_dim in dim_sizes:
-            print("Data has shape: " + str(data.shape))
+methods = ['standard_LLE','ltsa_LLE','modified_LLE','Spectral_Embedding','IsoMap','t-SNE','MDS','UMAP','hessian_LLE']
+method = 'standard_LLE'
+sphere_sizes = range(10,100,10)
+n_samples = 1000
+cluster_sizes = range(10,110,10)
+dim_sizes = range(1,21,1)
+list_array =[dim_sizes]
+#data = hypersphere(n_dimensions=4,n_samples=n_samples,k_space=20)
+for cluster_size in cluster_sizes:
+    run_array = []
+    for latent_dim in dim_sizes:
+        data = hypersphere(n_dimensions=4,n_samples=n_samples,k_space=20)
+        print("Data has shape: " + str(data.shape))
             # file_object = open('/Users/shamuscooley/GradSchool/Research/manifold/data/Siebert Data/wholegenome/enEp_SC1_ManDA_results_'+str(datetime.today())[0:10]+'.csv','w')
-            print("Finding High-D Neighborhood...")
-            high_D_neighborhood = neighbors(data,k=cluster_size)
-            print("Generating Embedding...")
-            embedding = NDR(data=data,method=method,dim=latent_dim)
-            print("Finding Low-D Neighborhood...")
-            low_D_neighborhood = neighbors(embedding,k=cluster_size)
-            print("Calculating Jaccard Distances...")
-            jaccard_distances=[]
-            for i in range(0,n_samples,1):
-                jaccard_distances.append(jaccard(low_D_neighborhood[i,:],high_D_neighborhood[i,:]))
-            trial =np.mean(jaccard_distances)
-            run_array.append(trial)
-        list_array.append(run_array)
-    print("Making numpy array")
-    nparray = np.asarray(list_array)
-    nparray = np.transpose(nparray)
-    col_labels= ['Latent Dimension']+["Sphere Dimension: "+str(p) for p in sphere_sizes]
-    print("Making DataFrame");
-    frame_of_data= pd.DataFrame(nparray, columns=col_labels)
-    print("Making.csv")
-    frame_of_data.to_csv("data/"+method+".csv")
+        print("Finding High-D Neighborhood...")
+        high_D_neighborhood = neighbors(data,k=cluster_size)
+        print("Generating Embedding...")
+        embedding = NDR(data=data,method=method,dim=latent_dim)
+        print("Finding Low-D Neighborhood...")
+        low_D_neighborhood = neighbors(embedding,k=cluster_size)
+        print("Calculating Jaccard Distances...")
+        jaccard_distances=[]
+        for i in range(0,n_samples,1):
+            jaccard_distances.append(jaccard(low_D_neighborhood[i,:],high_D_neighborhood[i,:]))
+        trial =np.mean(jaccard_distances)
+        run_array.append(trial)
+    list_array.append(run_array)
+print("Making numpy array")
+nparray = np.asarray(list_array)
+nparray = np.transpose(nparray)
+col_labels= ['Embedded Dimension']+["# of NN: "+ str(p) for p in cluster_sizes]
+print("Making DataFrame");
+frame_of_data= pd.DataFrame(nparray, columns=col_labels)
+print("Making.csv")
+frame_of_data.to_csv("/home/shamuscooley/Research/manifold_learning/figures/supplement/normal_dist/data/supp2-2.csv")
 print("All Done")
